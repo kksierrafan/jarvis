@@ -59,7 +59,10 @@ def resolve_llm_backend(backend_setting: str) -> str:
         "ollama" or "openai" (never "auto")
     """
     if backend_setting == "auto":
-        return "openai" if _is_apple_silicon() else "ollama"
+        # Ollama v0.19+ natively uses MLX on Apple Silicon, so "auto" always
+        # resolves to "ollama". Users who want a standalone OpenAI-compatible
+        # server (LM Studio, vLLM, mlx_lm.server) can set "openai" explicitly.
+        return "ollama"
     if backend_setting in ("ollama", "openai"):
         return backend_setting
     return "ollama"
@@ -323,7 +326,7 @@ def get_default_config() -> Dict[str, Any]:
         "sqlite_vss_path": None,
 
         # LLM & AI Models
-        "llm_backend": "auto",  # "auto" (MLX on Apple Silicon, else Ollama), "ollama", or "openai"
+        "llm_backend": "auto",  # "auto" (Ollama — uses MLX natively on Apple Silicon), "ollama", or "openai"
         "ollama_base_url": "http://127.0.0.1:11434",
         "ollama_embed_model": "nomic-embed-text",
         "ollama_chat_model": DEFAULT_CHAT_MODEL,

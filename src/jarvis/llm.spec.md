@@ -23,8 +23,8 @@ Three new configuration fields in `config.py`:
 | `openai_chat_model` | string | `""` | Model name sent to OpenAI-compatible API (empty = server decides) |
 
 **Backend resolution** (`"auto"` mode):
-- macOS ARM64 (`sys.platform == "darwin" and platform.machine() == "arm64"`): resolves to `"openai"`
-- All other platforms (macOS Intel, Windows, Linux): resolves to `"ollama"`
+- Always resolves to `"ollama"` on all platforms. Ollama v0.19+ natively uses MLX on Apple Silicon, so no separate backend is needed for fast inference.
+- Users who want a standalone OpenAI-compatible server (LM Studio, vLLM, `mlx_lm.server`) can set `"openai"` explicitly.
 
 ### API Format Differences
 
@@ -90,7 +90,9 @@ Config migration v2: no automatic migration needed. Existing configs without the
 
 | Platform | Default backend | Notes |
 |----------|----------------|-------|
-| macOS ARM64 (Apple Silicon) | OpenAI (MLX) | User runs `mlx_lm.server` or similar |
+| macOS ARM64 (Apple Silicon) | Ollama | Ollama v0.19+ natively uses MLX for faster inference |
 | macOS Intel | Ollama | Standard Ollama setup |
 | Windows | Ollama | Standard Ollama setup |
 | Linux | Ollama | Standard Ollama setup; GPU users may benefit from vLLM in future |
+
+All platforms default to Ollama. Users can opt into an OpenAI-compatible backend by setting `llm_backend: "openai"` for use with LM Studio, vLLM, or standalone `mlx_lm.server`.

@@ -14,7 +14,6 @@ from jarvis.config import (
     resolve_llm_backend,
     get_llm_chat_config,
     get_default_config,
-    load_settings,
 )
 
 
@@ -34,12 +33,8 @@ class TestResolveLlmBackend:
     def test_invalid_value_falls_back_to_ollama(self):
         assert resolve_llm_backend("invalid") == "ollama"
 
-    @patch("jarvis.config._is_apple_silicon", return_value=True)
-    def test_auto_on_apple_silicon_returns_openai(self, _mock):
-        assert resolve_llm_backend("auto") == "openai"
-
-    @patch("jarvis.config._is_apple_silicon", return_value=False)
-    def test_auto_on_non_apple_silicon_returns_ollama(self, _mock):
+    def test_auto_always_returns_ollama(self):
+        """Auto resolves to ollama on all platforms (Ollama v0.19+ uses MLX natively)."""
         assert resolve_llm_backend("auto") == "ollama"
 
 
@@ -66,14 +61,8 @@ class TestGetLlmChatConfig:
         assert chat_model == "my-mlx-model"
         assert api_format == "openai"
 
-    @patch("jarvis.config._is_apple_silicon", return_value=True)
-    def test_auto_on_apple_silicon_returns_openai_config(self, _mock, mock_config):
-        mock_config.llm_backend = "auto"
-        _, _, api_format = get_llm_chat_config(mock_config)
-        assert api_format == "openai"
-
-    @patch("jarvis.config._is_apple_silicon", return_value=False)
-    def test_auto_on_non_apple_silicon_returns_ollama_config(self, _mock, mock_config):
+    def test_auto_returns_ollama_config(self, mock_config):
+        """Auto resolves to ollama on all platforms (Ollama v0.19+ uses MLX natively)."""
         mock_config.llm_backend = "auto"
         _, _, api_format = get_llm_chat_config(mock_config)
         assert api_format == "ollama"

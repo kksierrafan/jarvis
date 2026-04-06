@@ -79,7 +79,7 @@ def _build_field_metadata() -> List[FieldMeta]:
 
     # --- LLM & AI Models ---
     backend_choices = [
-        ("auto", "Auto (MLX on Apple Silicon, else Ollama)"),
+        ("auto", "Auto (Ollama — uses MLX natively on Apple Silicon)"),
         ("ollama", "Ollama"),
         ("openai", "OpenAI-compatible (MLX, LM Studio, vLLM)"),
     ]
