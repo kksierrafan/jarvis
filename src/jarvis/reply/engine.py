@@ -13,6 +13,7 @@ from ..tools.registry import run_tool_with_retries, generate_tools_description, 
 from ..tools.builtin.stop import STOP_SIGNAL
 from ..debug import debug_log
 from ..llm import chat_with_messages, extract_text_from_response, ToolsNotSupportedError
+from ..config import get_llm_chat_config
 from .enrichment import extract_search_params_for_memory
 from .prompts import ModelSize, detect_model_size, get_system_prompts
 import json
@@ -41,6 +42,10 @@ def run_reply_engine(db: "Database", cfg, tts: Optional[Any],
     Returns:
         Generated reply text or None
     """
+    # Resolve LLM backend (Ollama vs OpenAI-compatible)
+    llm_base_url, llm_chat_model, llm_api_format = get_llm_chat_config(cfg)
+    debug_log(f"LLM backend: {llm_api_format} @ {llm_base_url}", "planning")
+
     # Step 1: Redact sensitive information
     redacted = redact(text)
 
@@ -70,13 +75,14 @@ def run_reply_engine(db: "Database", cfg, tts: Optional[Any],
 
     # Step 3: Profile selection (with follow-up awareness)
     profile_name = select_profile_llm(
-        cfg.ollama_base_url,
-        cfg.ollama_chat_model,
+        llm_base_url,
+        llm_chat_model,
         cfg.active_profiles,
         redacted,
         timeout_sec=float(getattr(cfg, 'llm_profile_select_timeout_sec', 30.0)),
         previous_profile=previous_profile,
         recent_context=recent_context_summary,
+        api_format=llm_api_format,
     )
     print(f"  🎭 Profile selected: {profile_name}", flush=True)
 
@@ -96,8 +102,9 @@ def run_reply_engine(db: "Database", cfg, tts: Optional[Any],
     conversation_context = ""
     try:
         search_params = extract_search_params_for_memory(
-            redacted, cfg.ollama_base_url, cfg.ollama_chat_model, cfg.voice_debug,
-            timeout_sec=float(getattr(cfg, 'llm_tools_timeout_sec', 8.0))
+            redacted, llm_base_url, llm_chat_model, cfg.voice_debug,
+            timeout_sec=float(getattr(cfg, 'llm_tools_timeout_sec', 8.0)),
+            api_format=llm_api_format,
         )
         keywords = search_params.get('keywords', [])
         if keywords:
@@ -166,12 +173,12 @@ def run_reply_engine(db: "Database", cfg, tts: Optional[Any],
 
     # Step 7: Messages-based loop with tool handling
     # Detect model size for prompt selection
-    model_size = detect_model_size(cfg.ollama_chat_model)
+    model_size = detect_model_size(llm_chat_model)
     # Start with native tool calling. If the model returns HTTP 400 (tools not supported),
     # we automatically switch to text-based tool calling (markdown fences in system prompt).
     use_text_tools = False
     prompts = get_system_prompts(model_size)
-    debug_log(f"Model size detected: {model_size.value} for {cfg.ollama_chat_model}", "planning")
+    debug_log(f"Model size detected: {model_size.value} for {llm_chat_model}", "planning")
 
     def _build_initial_system_message() -> str:
         # Start with profile-specific system prompt
@@ -438,19 +445,20 @@ def run_reply_engine(db: "Database", cfg, tts: Optional[Any],
         # if the model returns HTTP 400 (native tools API not supported).
         try:
             llm_resp = chat_with_messages(
-                base_url=cfg.ollama_base_url,
-                chat_model=cfg.ollama_chat_model,
+                base_url=llm_base_url,
+                chat_model=llm_chat_model,
                 messages=messages,
                 timeout_sec=float(getattr(cfg, 'llm_chat_timeout_sec', 45.0)),
                 extra_options=None,
                 tools=None if use_text_tools else tools_json_schema,
+                api_format=llm_api_format,
             )
         except ToolsNotSupportedError:
             # Model doesn't support the native tools API — switch to text-based tool calling
             # for the rest of this session and rebuild the system message to include tool
             # descriptions as plain text with markdown fence instructions.
             debug_log(
-                f"⚠️ Native tools API not supported by {cfg.ollama_chat_model!r}, "
+                f"⚠️ Native tools API not supported by {llm_chat_model!r}, "
                 "falling back to text-based tool calling (markdown fences)",
                 "planning",
             )
@@ -458,12 +466,13 @@ def run_reply_engine(db: "Database", cfg, tts: Optional[Any],
             messages[0] = {"role": "system", "content": _build_initial_system_message()}
             _update_system_message_with_context(messages)
             llm_resp = chat_with_messages(
-                base_url=cfg.ollama_base_url,
-                chat_model=cfg.ollama_chat_model,
+                base_url=llm_base_url,
+                chat_model=llm_chat_model,
                 messages=messages,
                 timeout_sec=float(getattr(cfg, 'llm_chat_timeout_sec', 45.0)),
                 extra_options=None,
                 tools=None,
+                api_format=llm_api_format,
             )
         if not llm_resp:
             debug_log("  ❌ LLM returned no response", "planning")
@@ -665,7 +674,7 @@ def run_reply_engine(db: "Database", cfg, tts: Optional[Any],
             debug_log(f"  ⚠️ Rejecting malformed JSON response: '{content[:100]}...'", "planning")
 
             # Check if using a small model and suggest upgrading
-            model_name = cfg.ollama_chat_model.lower() if cfg.ollama_chat_model else ""
+            model_name = llm_chat_model.lower() if llm_chat_model else ""
             is_small_model = any(size in model_name for size in [":1b", ":3b", ":7b", "-1b", "-3b", "-7b"])
 
             if is_small_model:

@@ -28,9 +28,12 @@ if str(SRC) not in sys.path:
 @dataclass
 class MockConfig:
     """Minimal config object for unit tests that need a config."""
+    llm_backend: str = "ollama"
     ollama_base_url: str = "http://localhost:11434"
     ollama_chat_model: str = "gemma4:e2b"
     ollama_embed_model: str = "nomic-embed-text"
+    openai_base_url: str = "http://localhost:8080"
+    openai_chat_model: str = ""
     db_path: str = ":memory:"
     sqlite_vss_path: Optional[str] = None
     voice_debug: bool = True

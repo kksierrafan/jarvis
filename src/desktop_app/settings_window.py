@@ -78,13 +78,26 @@ def _build_field_metadata() -> List[FieldMeta]:
                                 category=cat, field_type=ftype, **kw))
 
     # --- LLM & AI Models ---
+    backend_choices = [
+        ("auto", "Auto (MLX on Apple Silicon, else Ollama)"),
+        ("ollama", "Ollama"),
+        ("openai", "OpenAI-compatible (MLX, LM Studio, vLLM)"),
+    ]
+    f("llm_backend", "LLM Backend", "API backend for chat inference",
+      "llm", "choice", choices=backend_choices)
     model_choices = [(mid, info["name"]) for mid, info in SUPPORTED_CHAT_MODELS.items()]
-    f("ollama_chat_model", "Chat Model", "Primary LLM for conversations",
+    f("ollama_chat_model", "Ollama Chat Model", "Chat model when using Ollama backend",
       "llm", "choice", choices=model_choices)
-    f("ollama_embed_model", "Embedding Model", "Model for text embeddings",
+    f("ollama_embed_model", "Embedding Model", "Model for text embeddings (always uses Ollama)",
       "llm", "str")
     f("ollama_base_url", "Ollama URL", "Ollama server base URL",
       "llm", "str")
+    f("openai_base_url", "OpenAI-compatible URL",
+      "Base URL for OpenAI-compatible server (MLX, LM Studio, etc.)",
+      "llm", "str")
+    f("openai_chat_model", "OpenAI-compatible Model",
+      "Model name for OpenAI-compatible API (empty = server decides)",
+      "llm", "str", nullable=True)
     f("llm_chat_timeout_sec", "Chat Timeout", "Max seconds for chat responses",
       "llm", "float", min_val=10, max_val=600, step=10, suffix="s")
     f("llm_tools_timeout_sec", "Tools Timeout", "Max seconds for tool calls",

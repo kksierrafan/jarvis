@@ -1,8 +1,10 @@
 import os
 import json
+import sys
+import platform
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 from dotenv import load_dotenv
 
 
@@ -42,6 +44,44 @@ def get_supported_model_ids() -> set[str]:
     return set(SUPPORTED_CHAT_MODELS.keys())
 
 
+def _is_apple_silicon() -> bool:
+    """Check if running on Apple Silicon (macOS ARM64)."""
+    return sys.platform == "darwin" and platform.machine() == "arm64"
+
+
+def resolve_llm_backend(backend_setting: str) -> str:
+    """Resolve 'auto' backend to a concrete value based on platform.
+
+    Args:
+        backend_setting: "auto", "ollama", or "openai"
+
+    Returns:
+        "ollama" or "openai" (never "auto")
+    """
+    if backend_setting == "auto":
+        return "openai" if _is_apple_silicon() else "ollama"
+    if backend_setting in ("ollama", "openai"):
+        return backend_setting
+    return "ollama"
+
+
+def get_llm_chat_config(cfg) -> Tuple[str, str, str]:
+    """Get the resolved (base_url, chat_model, api_format) for chat inference.
+
+    Args:
+        cfg: Settings object
+
+    Returns:
+        Tuple of (base_url, chat_model, api_format) where api_format is "ollama" or "openai"
+    """
+    api_format = resolve_llm_backend(getattr(cfg, "llm_backend", "auto"))
+    if api_format == "openai":
+        base_url = getattr(cfg, "openai_base_url", "http://127.0.0.1:8080")
+        chat_model = getattr(cfg, "openai_chat_model", "")
+        return (base_url, chat_model, "openai")
+    return (cfg.ollama_base_url, cfg.ollama_chat_model, "ollama")
+
+
 def _default_db_path() -> str:
     base = Path.home() / ".local" / "share" / "jarvis"
     base.mkdir(parents=True, exist_ok=True)
@@ -55,9 +95,12 @@ class Settings:
     sqlite_vss_path: str | None
 
     # LLM & AI Models
+    llm_backend: str  # "auto", "ollama", or "openai"
     ollama_base_url: str
     ollama_embed_model: str
     ollama_chat_model: str
+    openai_base_url: str  # Base URL for OpenAI-compatible server (MLX, LM Studio, etc.)
+    openai_chat_model: str  # Model name for OpenAI-compatible API (empty = server decides)
     llm_chat_timeout_sec: float
     llm_tools_timeout_sec: float
     llm_embedding_timeout_sec: float
@@ -280,9 +323,12 @@ def get_default_config() -> Dict[str, Any]:
         "sqlite_vss_path": None,
 
         # LLM & AI Models
+        "llm_backend": "auto",  # "auto" (MLX on Apple Silicon, else Ollama), "ollama", or "openai"
         "ollama_base_url": "http://127.0.0.1:11434",
         "ollama_embed_model": "nomic-embed-text",
         "ollama_chat_model": DEFAULT_CHAT_MODEL,
+        "openai_base_url": "http://127.0.0.1:8080",  # MLX/LM Studio/vLLM default
+        "openai_chat_model": "",  # Empty = server decides (MLX uses loaded model)
         "llm_chat_timeout_sec": 180.0,
         "llm_tools_timeout_sec": 300.0,
         "llm_embedding_timeout_sec": 60.0,
@@ -441,9 +487,14 @@ def load_settings() -> Settings:
     sqlite_vss_path = merged.get("sqlite_vss_path")
     allowlist_bundles = _ensure_list(merged.get("allowlist_bundles"))
 
+    llm_backend = str(merged.get("llm_backend", "auto")).lower()
+    if llm_backend not in ("auto", "ollama", "openai"):
+        llm_backend = "auto"
     ollama_base_url = str(merged.get("ollama_base_url"))
     ollama_embed_model = str(merged.get("ollama_embed_model"))
     ollama_chat_model = str(merged.get("ollama_chat_model"))
+    openai_base_url = str(merged.get("openai_base_url", "http://127.0.0.1:8080"))
+    openai_chat_model = str(merged.get("openai_chat_model", ""))
     use_stdin = bool(merged.get("use_stdin", False))
     active_profiles = _ensure_list(merged.get("active_profiles"))
     tts_enabled = bool(merged.get("tts_enabled", True))
@@ -543,9 +594,12 @@ def load_settings() -> Settings:
         sqlite_vss_path=sqlite_vss_path,
 
         # LLM & AI Models
+        llm_backend=llm_backend,
         ollama_base_url=ollama_base_url,
         ollama_embed_model=ollama_embed_model,
         ollama_chat_model=ollama_chat_model,
+        openai_base_url=openai_base_url,
+        openai_chat_model=openai_chat_model,
         llm_chat_timeout_sec=llm_chat_timeout_sec,
         llm_tools_timeout_sec=llm_tools_timeout_sec,
         llm_embedding_timeout_sec=llm_embedding_timeout_sec,

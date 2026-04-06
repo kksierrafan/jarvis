@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional, List, Callable
 from datetime import datetime, timezone
 
 from ....debug import debug_log
-from ....config import Settings
+from ....config import Settings, get_llm_chat_config
 from ....memory.db import Database
 from ....llm import call_llm_direct
 from ...base import Tool, ToolContext
@@ -41,11 +41,12 @@ def extract_and_log_meal(db: Database, cfg: Any, original_text: str, source_app:
     Uses the chat model to extract a structured meal from the redacted user text, logs it to DB,
     and returns a short user-facing confirmation + healthy follow-ups.
     """
+    llm_base_url, llm_chat_model, llm_api_format = get_llm_chat_config(cfg)
     user_prompt = (
         "User said (redacted):\n" + original_text[:1200] + "\n\n"
         "Return ONLY JSON or the exact string NONE."
     )
-    raw = call_llm_direct(cfg.ollama_base_url, cfg.ollama_chat_model, NUTRITION_SYS, user_prompt, timeout_sec=cfg.llm_chat_timeout_sec) or ""
+    raw = call_llm_direct(llm_base_url, llm_chat_model, NUTRITION_SYS, user_prompt, timeout_sec=cfg.llm_chat_timeout_sec, api_format=llm_api_format) or ""
     text = (raw or "").strip()
     if text.upper() == "NONE":
         return None
@@ -127,13 +128,14 @@ def generate_followups_for_meal(cfg: Any, description: str, approx: str) -> str:
     """
     Ask the coach for concise, pragmatic follow-ups given a logged meal summary.
     """
+    llm_base_url, llm_chat_model, llm_api_format = get_llm_chat_config(cfg)
     follow_sys = (
         "You are a pragmatic nutrition coach. Given the logged meal and rough macros, suggest 2-3 healthy, "
         "realistic follow-ups for the rest of the day (e.g., hydration, protein target, veggie/fruit, sodium/potassium balance, light activity). "
         "Be concise and specific."
     )
     follow_user = f"Logged meal: {description} | {approx}."
-    follow_text = call_llm_direct(cfg.ollama_base_url, cfg.ollama_chat_model, follow_sys, follow_user, timeout_sec=cfg.llm_chat_timeout_sec) or ""
+    follow_text = call_llm_direct(llm_base_url, llm_chat_model, follow_sys, follow_user, timeout_sec=cfg.llm_chat_timeout_sec, api_format=llm_api_format) or ""
     return (follow_text or "").strip()
 
 

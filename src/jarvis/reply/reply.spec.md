@@ -230,6 +230,14 @@ Turn 4: LLM → {content: "Here's a comprehensive comparison of the iPhone 15 mo
 ```
 
 ### Configuration and Defaults
+- LLM backend:
+  - `llm_backend` selects API format: `"auto"` (MLX on Apple Silicon, else Ollama), `"ollama"`, or `"openai"`
+  - `openai_base_url` base URL for OpenAI-compatible server (default `http://127.0.0.1:8080`)
+  - `openai_chat_model` model name for OpenAI-compatible API (empty = server decides)
+  - Resolved at engine entry via `get_llm_chat_config(cfg)` → `(base_url, chat_model, api_format)`
+  - All chat LLM calls (profile selection, enrichment, agentic loop) use the resolved backend
+  - Embeddings always use Ollama (`ollama_base_url` + `ollama_embed_model`) regardless of backend
+  - See `src/jarvis/llm.spec.md` for full backend specification
 - Timeouts (seconds):
   - `llm_profile_select_timeout_sec` (profile routing)
   - `llm_tools_timeout_sec` (enrichment extraction)

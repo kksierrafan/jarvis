@@ -32,7 +32,7 @@ if sys.platform == 'win32' and not getattr(sys, 'frozen', False):
 from typing import Optional
 from faster_whisper import WhisperModel
 
-from .config import load_settings
+from .config import load_settings, get_llm_chat_config
 from .memory.db import Database
 from .memory.conversation import DialogueMemory, update_diary_from_dialogue_memory
 from .output.tts import create_tts_engine
@@ -236,17 +236,21 @@ def _check_and_update_diary(
             # Only use token handler if we have callbacks or IPC enabled
             on_token = on_token_handler if (use_callbacks or use_ipc) else None
 
+            # Resolve LLM backend for diary summarisation
+            llm_base_url, llm_chat_model, llm_api_format = get_llm_chat_config(cfg)
+
             summary_id = update_diary_from_dialogue_memory(
                 db=db,
                 dialogue_memory=_global_dialogue_memory,
-                ollama_base_url=cfg.ollama_base_url,
-                ollama_chat_model=cfg.ollama_chat_model,
+                ollama_base_url=llm_base_url,
+                ollama_chat_model=llm_chat_model,
                 ollama_embed_model=cfg.ollama_embed_model,
                 source_app=source_app,
                 voice_debug=cfg.voice_debug,
                 timeout_sec=effective_timeout,
                 force=force,
                 on_token=on_token,
+                api_format=llm_api_format,
             )
 
             # Flush any remaining tokens in IPC mode

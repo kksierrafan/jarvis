@@ -44,6 +44,7 @@ class IntentJudgeConfig:
     model: str = "gemma4:e2b"
     ollama_base_url: str = "http://127.0.0.1:11434"
     timeout_sec: float = 10.0
+    api_format: str = "ollama"  # "ollama" or "openai"
 
     def __post_init__(self):
         if self.aliases is None:
@@ -308,10 +309,23 @@ Examples:
             transcript_preview = "; ".join(s.text[:30] for s in segments[-3:])
             debug_log(f"🧠 Intent judge [{mode}]: \"{transcript_preview}...\"", "voice")
 
-            # Call Ollama API
-            response = requests.post(
-                f"{self.config.ollama_base_url}/api/generate",
-                json={
+            # Call LLM API (Ollama generate or OpenAI-compatible chat)
+            if self.config.api_format == "openai":
+                url = f"{self.config.ollama_base_url.rstrip('/')}/v1/chat/completions"
+                payload = {
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "stream": False,
+                    "temperature": 0.0,
+                    "max_tokens": 800,
+                }
+                if self.config.model:
+                    payload["model"] = self.config.model
+            else:
+                url = f"{self.config.ollama_base_url.rstrip('/')}/api/generate"
+                payload = {
                     "model": self.config.model,
                     "prompt": user_prompt,
                     "system": system_prompt,
@@ -320,17 +334,22 @@ Examples:
                         "temperature": 0.0,
                         "num_predict": 800,
                     },
-                },
-                timeout=self.config.timeout_sec,
-            )
+                }
+
+            response = requests.post(url, json=payload, timeout=self.config.timeout_sec)
 
             if response.status_code != 200:
-                debug_log(f"intent judge: Ollama error {response.status_code}", "voice")
+                debug_log(f"intent judge: LLM error {response.status_code}", "voice")
                 self._last_error_time = time.time()
                 return None
 
             result = response.json()
-            response_text = result.get("response", "")
+            # Extract response text from the appropriate format
+            if self.config.api_format == "openai":
+                choices = result.get("choices", [])
+                response_text = choices[0]["message"]["content"] if choices else ""
+            else:
+                response_text = result.get("response", "")
 
             judgment = self._parse_response(response_text)
 
@@ -372,15 +391,20 @@ def create_intent_judge(cfg) -> Optional[IntentJudge]:
     Returns:
         IntentJudge instance or None if requests library unavailable
     """
+    from ..config import get_llm_chat_config
+
+    # Resolve LLM backend — intent judge uses the same backend as chat
+    llm_base_url, _, llm_api_format = get_llm_chat_config(cfg)
+
     model = str(getattr(cfg, "intent_judge_model", "gemma4:e2b"))
-    ollama_base_url = str(getattr(cfg, "ollama_base_url", "http://127.0.0.1:11434"))
 
     config = IntentJudgeConfig(
         assistant_name=str(getattr(cfg, "wake_word", "jarvis")).capitalize(),
         aliases=list(getattr(cfg, "wake_aliases", [])),
         model=model,
-        ollama_base_url=ollama_base_url,
+        ollama_base_url=llm_base_url,
         timeout_sec=float(getattr(cfg, "intent_judge_timeout_sec", 10.0)),
+        api_format=llm_api_format,
     )
 
     return IntentJudge(config)
